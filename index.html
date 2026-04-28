@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beyond Standard LLMs 01 &mdash; Linear-Attention Hybrids</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a; --bg-card: #0d1117; --bg-code: #161b22;
+            --text-primary: #e6edf3; --text-secondary: #8b949e;
+            --accent: #76B900; --accent-dim: #76B90044; --accent-glow: #76B90033;
+            --warm: #ffa657; --warm-dim: rgba(255,166,87,0.15);
+            --bad: #ff7b72;
+            --border: #21262d;
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+            --font-body: 'Inter', sans-serif;
+            --max-width: 900px;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { background: var(--bg-primary); color: var(--text-primary);
+               font-family: var(--font-body); font-size: 17px; line-height: 1.7;
+               overflow-x: hidden; }
+        .hero { min-height: 100vh; display: flex; flex-direction: column;
+                justify-content: center; align-items: center;
+                padding: 2rem 1.5rem; text-align: center; position: relative; }
+        .hero::before { content: ''; position: absolute; top: 0; left: 50%;
+                        transform: translateX(-50%); width: 600px; height: 600px;
+                        background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+                        pointer-events: none; z-index: 0; }
+        .hero > * { position: relative; z-index: 1; }
+        .series-label { font-family: var(--font-mono); font-size: 0.85rem;
+                        color: var(--accent); letter-spacing: 0.15em;
+                        text-transform: uppercase; margin-bottom: 1rem; }
+        .hero h1 { font-family: var(--font-display);
+                   font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 700;
+                   color: var(--text-primary); line-height: 1.2; margin-bottom: 1rem; }
+        .hero h1 .accent { color: var(--accent); }
+        .hero .subtitle { font-size: 1.1rem; color: var(--text-secondary);
+                          max-width: 720px; margin-bottom: 2rem; }
+        .tags { display: flex; flex-wrap: wrap; gap: 0.5rem;
+                justify-content: center; margin-bottom: 2.5rem; }
+        .tag { font-family: var(--font-mono); font-size: 0.75rem;
+               padding: 0.25rem 0.75rem; border-radius: 999px;
+               border: 1px solid var(--accent); color: var(--accent);
+               background: var(--accent-dim); white-space: nowrap; }
+        .pipeline { display: flex; flex-wrap: wrap; align-items: center;
+                    justify-content: center; gap: 0.25rem; margin-bottom: 1rem;
+                    max-width: var(--max-width); }
+        .pipeline-step { font-family: var(--font-mono); font-size: 0.7rem;
+                         padding: 0.3rem 0.7rem; background: var(--bg-card);
+                         border: 1px solid var(--border); border-radius: 4px;
+                         color: var(--text-secondary); white-space: nowrap; }
+        .pipeline-arrow { color: var(--accent); font-size: 0.9rem; font-weight: 700; }
+        .slide { min-height: 100vh; max-width: var(--max-width);
+                 margin: 0 auto; padding: 4rem 1.5rem; position: relative;
+                 display: flex; flex-direction: column; justify-content: center; }
+        .slide-number { font-family: var(--font-display); font-size: 5rem;
+                        font-weight: 700; color: var(--accent-dim);
+                        position: absolute; top: 2rem; right: 1.5rem;
+                        line-height: 1; user-select: none; }
+        .slide h2 { font-family: var(--font-display); font-size: 1.9rem;
+                    font-weight: 700; color: var(--accent); margin-bottom: 1.5rem;
+                    line-height: 1.25; }
+        .slide h3 { font-family: var(--font-display); font-size: 1.3rem;
+                    font-weight: 600; color: var(--text-primary);
+                    margin-top: 1.5rem; margin-bottom: 0.75rem; }
+        .slide p { margin-bottom: 1rem; color: var(--text-secondary); }
+        .slide p strong { color: var(--text-primary); }
+        .slide ul, .slide ol { margin-bottom: 1rem; padding-left: 1.5rem;
+                               color: var(--text-secondary); }
+        .slide li { margin-bottom: 0.4rem; }
+        .slide li strong { color: var(--text-primary); }
+        .slide code { font-family: var(--font-mono); font-size: 0.88em;
+                      background: var(--bg-code); border: 1px solid var(--border);
+                      padding: 0.05rem 0.35rem; border-radius: 3px; color: #c9d1d9; }
+        .table-wrap { overflow-x: auto; margin: 1.25rem 0; border-radius: 8px;
+                      border: 1px solid var(--border); }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th { background: var(--bg-code); color: var(--accent); font-weight: 600;
+             text-align: left; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
+             font-family: var(--font-display); white-space: nowrap; }
+        td { padding: 0.6rem 1rem; border-bottom: 1px solid var(--border);
+             color: var(--text-secondary); }
+        tr:last-child td { border-bottom: none; }
+        tr:nth-child(even) td { background: rgba(13, 17, 23, 0.5); }
+        .diagram-flow { display: flex; flex-wrap: wrap; align-items: center;
+                        justify-content: center; gap: 0.5rem; margin: 1.5rem 0;
+                        padding: 1.5rem; background: var(--bg-card);
+                        border: 1px solid var(--border); border-radius: 8px; }
+        .diagram-box { font-family: var(--font-mono); font-size: 0.85rem;
+                       padding: 0.5rem 1rem; background: var(--bg-code);
+                       border: 1px solid var(--border); border-radius: 6px;
+                       color: var(--text-primary); text-align: center; white-space: nowrap; }
+        .diagram-box.accent { border-color: var(--accent); color: var(--accent);
+                              background: rgba(118, 185, 0, 0.08); }
+        .diagram-arrow { color: var(--accent); font-size: 1.3rem; font-weight: 700; }
+        .diagram-grid { display: grid; gap: 0.75rem; margin: 1.5rem 0;
+                        padding: 1.5rem; background: var(--bg-card);
+                        border: 1px solid var(--border); border-radius: 8px; }
+        .diagram-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+        .diagram-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+        .diagram-panel { padding: 1rem; background: var(--bg-code);
+                         border: 1px solid var(--border); border-radius: 6px; }
+        .diagram-panel.accent-border { border-left: 3px solid var(--accent); }
+        .diagram-panel h4 { font-family: var(--font-display); font-size: 1rem;
+                            color: var(--accent); margin-bottom: 0.5rem; }
+        .diagram-panel p, .diagram-panel ul { font-size: 0.85rem; }
+        .callout { background: var(--bg-card); border-left: 3px solid var(--accent);
+                   border-radius: 0 8px 8px 0; padding: 1rem 1.25rem; margin: 1.25rem 0; }
+        .callout p { margin-bottom: 0; }
+        .callout p + p { margin-top: 0.5rem; }
+        .callout .callout-label { font-family: var(--font-mono); font-size: 0.75rem;
+                                  color: var(--accent); text-transform: uppercase;
+                                  letter-spacing: 0.1em; margin-bottom: 0.3rem; }
+        .callout.warn { border-left-color: var(--warm); }
+        .callout.warn .callout-label { color: var(--warm); }
+        .contents-list { list-style: none; padding-left: 0; counter-reset: contents; }
+        .contents-list li { counter-increment: contents; padding: 0.6rem 0;
+                            border-bottom: 1px solid var(--border);
+                            display: flex; align-items: center; gap: 1rem; }
+        .contents-list li:last-child { border-bottom: none; }
+        .contents-list li::before { content: counter(contents, decimal-leading-zero);
+                                    font-family: var(--font-mono); font-size: 0.85rem;
+                                    color: var(--accent); min-width: 2rem; }
+        .contents-list a { color: var(--text-primary); text-decoration: none;
+                           transition: color 0.2s; }
+        .contents-list a:hover { color: var(--accent); }
+        .footer { text-align: center; padding: 3rem 1.5rem;
+                  color: var(--text-secondary); font-size: 0.85rem;
+                  border-top: 1px solid var(--border); max-width: var(--max-width);
+                  margin: 0 auto; }
+        .footer a { color: var(--accent); text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+        .canvas-wrap { background: var(--bg-card); border: 1px solid var(--border);
+                       border-radius: 8px; padding: 1rem; margin: 1.25rem 0;
+                       overflow-x: auto; }
+        .canvas-wrap canvas, .canvas-wrap svg { display: block; margin: 0 auto;
+                                                 max-width: 100%; }
+        .deck-list { display: flex; flex-direction: column; gap: 0.6rem;
+                     list-style: none; padding: 0; }
+        .deck-card { display: flex; gap: 1rem; padding: 1rem 1.25rem;
+                     background: var(--bg-card); border: 1px solid var(--border);
+                     border-left: 3px solid var(--accent); border-radius: 6px;
+                     transition: border-color 0.15s; }
+        .deck-card:hover { border-color: var(--accent); }
+        .deck-card .num { font-family: var(--font-mono); font-size: 0.8rem;
+                          color: var(--accent); min-width: 2rem; padding-top: 0.15rem; }
+        .deck-card .body { flex: 1; min-width: 0; }
+        .deck-card .deck-title { font-family: var(--font-display); font-size: 1.05rem;
+                                 font-weight: 600; color: var(--text-primary);
+                                 margin-bottom: 0.2rem; }
+        .deck-card a.deck-title { text-decoration: none; }
+        .deck-card a.deck-title:hover { color: var(--accent); }
+        .deck-card .desc { font-size: 0.92rem; color: var(--text-secondary); }
+        .ref-link { display: inline-block; padding: 0.4rem 0.8rem;
+                    border: 1px solid var(--accent); color: var(--accent);
+                    border-radius: 4px; text-decoration: none;
+                    font-family: var(--font-mono); font-size: 0.8rem;
+                    transition: background 0.15s; }
+        .ref-link:hover { background: var(--accent-dim); }
+
+        /* Calculator widget */
+        .calc-card { background: var(--bg-card); border: 1px solid var(--border);
+                     border-left: 3px solid var(--accent); border-radius: 8px;
+                     padding: 1.25rem; margin: 1.25rem 0; }
+        .calc-card label { display: block; font-family: var(--font-mono); font-size: 0.78rem;
+                           color: var(--text-secondary); margin-bottom: 0.3rem; }
+        .calc-card input[type="range"] { width: 100%; accent-color: var(--accent); }
+        .calc-card .calc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.8rem; }
+        .calc-card .readout { font-family: var(--font-mono); font-size: 0.9rem; color: var(--accent); }
+        .calc-card .cost-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-top: 1rem; }
+        .calc-card .cost-cell { padding: 0.7rem; background: var(--bg-code); border: 1px solid var(--border); border-radius: 6px; }
+        .calc-card .cost-cell .lbl { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-secondary); }
+        .calc-card .cost-cell .val { font-family: var(--font-display); font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin-top: 0.2rem; }
+        .calc-card .cost-cell.savings { border-left: 3px solid var(--accent); }
+        .calc-card .cost-cell.savings .val { color: var(--accent); }
+
+        @media (max-width: 640px) {
+            .slide { padding: 3rem 1rem; min-height: auto; }
+            .slide-number { font-size: 3rem; top: 1.5rem; right: 1rem; }
+            .slide h2 { font-size: 1.5rem; }
+            .diagram-grid.cols-2, .diagram-grid.cols-3 { grid-template-columns: 1fr; }
+            .calc-card .cost-grid, .calc-card .calc-row { grid-template-columns: 1fr; }
+            .pipeline { gap: 0.15rem; }
+            .pipeline-step { font-size: 0.6rem; padding: 0.2rem 0.4rem; }
+            .hero h1 { font-size: 1.8rem; }
+            table { font-size: 0.78rem; }
+        }
+    </style>
+</head>
+<body>
+<header class="hero">
+    <div class="series-label">Beyond Standard LLMs &mdash; Companion to Sebastian Raschka &mdash; Presentation 01</div>
+    <h1>Linear-Attention <span class="accent">Hybrids</span></h1>
+    <p class="subtitle">When attention costs more than the brain it serves. How MiniMax-M1, Qwen3-Next, DeepSeek V3.2 and Kimi Linear trade a sliver of accuracy for an order-of-magnitude reduction in long-context cost &mdash; and why MiniMax-M2 reverted.</p>
+    <div class="tags">
+        <span class="tag">Companion</span>
+        <span class="tag">Sebastian Raschka</span>
+        <span class="tag">Linear Attention</span>
+        <span class="tag">DeltaNet</span>
+        <span class="tag">KV Cache</span>
+        <span class="tag">Long Context</span>
+    </div>
+    <div class="pipeline">
+        <span class="pipeline-step">Softmax Attention O(n&sup2;)</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Linear Attention O(n)</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Gated DeltaNet</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Hybrid Stack 3:1</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Cheap KV Cache</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">262k Context</span>
+    </div>
+    <p style="margin-top: 1.5rem; font-size: 0.9rem;"><a class="ref-link" href="https://magazine.sebastianraschka.com/p/beyond-standard-llms" target="_blank" rel="noopener">Read the original article &rarr;</a></p>
+</header>
+
+<section class="slide" id="slide-00">
+    <div class="slide-number">00</div>
+    <h2>Topics We&rsquo;ll Cover</h2>
+    <ul class="contents-list">
+        <li><a href="#slide-01">The O(n&sup2;) Wall &mdash; Why Standard Attention Hurts</a></li>
+        <li><a href="#slide-02">From Softmax to Linear Attention &mdash; The Math Trick</a></li>
+        <li><a href="#slide-03">Gated DeltaNet &mdash; Memory With Decay and Update</a></li>
+        <li><a href="#slide-04">The Hybrid Pattern &mdash; Why Pure Linear Doesn&rsquo;t Ship</a></li>
+        <li><a href="#slide-05">KV Cache &mdash; Where the Money Actually Is</a></li>
+        <li><a href="#slide-06">Interactive: KV-Cache Memory Calculator</a></li>
+        <li><a href="#slide-07">When Linear Hurts &mdash; The MiniMax-M2 Reversal</a></li>
+        <li><a href="#slide-08">Companion Decks &mdash; Where to Go Next</a></li>
+        <li><a href="#slide-09">Things to Try Yourself</a></li>
+    </ul>
+
+    <div class="callout">
+        <div class="callout-label">How this series maps onto Raschka&rsquo;s article</div>
+        <p>Raschka&rsquo;s essay surveys four post-transformer families and argues each one occupies a niche the standard decoder doesn&rsquo;t fill. This deck takes the first family &mdash; <strong>linear-attention hybrids</strong> &mdash; and unpacks the engineering reality: what the math is, what the savings look like, and where the still-open accuracy questions sit. Decks 02&ndash;05 cover the other three families plus a decision-tree for when to reach for any of them.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-01">
+    <div class="slide-number">01</div>
+    <h2>The O(n&sup2;) Wall &mdash; Why Standard Attention Hurts</h2>
+    <p>Scaled-dot-product attention is the one piece of the transformer that does not scale gracefully. Every token attends to every prior token, so both <strong>compute</strong> and <strong>memory</strong> grow quadratically with sequence length. At 4&nbsp;k tokens nobody notices; at 200&nbsp;k tokens it dominates the inference bill; at 1&nbsp;M tokens it is the only thing that matters.</p>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Compute &mdash; the obvious wall</h4>
+            <p>The attention matrix has shape <code>(n&times;n)</code>. Doubling the context quadruples the FLOPs in the attention layers. Flash-Attention reorganises the work to avoid materialising the full matrix, but it does not change the asymptotic <code>O(n&sup2;)</code> cost.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>KV cache &mdash; the quieter wall</h4>
+            <p>During autoregressive decoding the model caches Keys and Values for every prior token, in every layer, in every head. That cache grows linearly with <code>n</code> per token, multiplied by <code>n_layers &middot; n_heads &middot; d_head</code>. At long context the cache, not the weights, dominates GPU memory.</p>
+        </div>
+    </div>
+
+    <h3>Raschka&rsquo;s framing</h3>
+    <p>From the article: <em>&ldquo;Traditional scaled-dot-product attention scales O(n&sup2;) with sequence length; linear variants aim for O(n) complexity.&rdquo;</em> Linear attention has been studied since 2020 (Linear Transformers, Performer, Linformer). What is new in 2025&ndash;2026 is that production-grade open-weights labs are now shipping it &mdash; not as research artefacts, but as <strong>flagship general-purpose models</strong>: MiniMax-M1, Qwen3-Next, DeepSeek V3.2, Kimi Linear.</p>
+
+    <div class="callout">
+        <div class="callout-label">A useful intuition</div>
+        <p>Standard attention is a <em>set comparison</em> &mdash; every query token compares itself with every key. Linear attention is closer to a <em>running summary</em> &mdash; each token folds into a small fixed-size state, and queries read from that state. The set comparison is more expressive; the running summary is dramatically cheaper. The 2025 generation says: <em>combine them</em>.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-02">
+    <div class="slide-number">02</div>
+    <h2>From Softmax to Linear Attention &mdash; The Math Trick</h2>
+    <p>The softmax attention computation looks innocent: <code>O = softmax(QK<sup>T</sup>/&radic;d) V</code>. The problem is the softmax: it forces you to materialise the full <code>n&times;n</code> matrix because softmax couples every key to every query. Replace softmax with a kernel that factorises &mdash; <code>&phi;(Q)&phi;(K)<sup>T</sup></code> &mdash; and you can re-associate the multiplication.</p>
+
+    <div class="canvas-wrap">
+        <svg viewBox="0 0 720 240" width="720" height="240" xmlns="http://www.w3.org/2000/svg">
+            <style>
+                .lbox { fill: #0d1117; stroke: #21262d; }
+                .lacc { fill: #0d1117; stroke: #76B900; }
+                .ttl { fill: #76B900; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 700; }
+                .lbl { fill: #e6edf3; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+                .sub { fill: #8b949e; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+                .arr { stroke: #76B900; stroke-width: 2; fill: none; marker-end: url(#a2); }
+            </style>
+            <defs>
+                <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#76B900"/>
+                </marker>
+            </defs>
+            <rect class="lbox" x="20" y="40" width="320" height="160" rx="6"/>
+            <text class="ttl" x="180" y="65" text-anchor="middle">Softmax attention &mdash; O(n&sup2;)</text>
+            <text class="lbl" x="180" y="100" text-anchor="middle">O = softmax(QK&#7488;) V</text>
+            <text class="sub" x="180" y="125" text-anchor="middle">must materialise (n&times;n) matrix</text>
+            <text class="sub" x="180" y="143" text-anchor="middle">memory: O(n&sup2;)</text>
+            <text class="sub" x="180" y="161" text-anchor="middle">compute: O(n&sup2; d)</text>
+            <text class="sub" x="180" y="183" text-anchor="middle">expressive but expensive</text>
+
+            <rect class="lacc" x="380" y="40" width="320" height="160" rx="6"/>
+            <text class="ttl" x="540" y="65" text-anchor="middle">Linear attention &mdash; O(n d&sup2;)</text>
+            <text class="lbl" x="540" y="100" text-anchor="middle">O = &phi;(Q) &middot; (&phi;(K)&#7488; V)</text>
+            <text class="sub" x="540" y="125" text-anchor="middle">re-associate: KV first, then Q</text>
+            <text class="sub" x="540" y="143" text-anchor="middle">memory: O(d&sup2;) state, no n</text>
+            <text class="sub" x="540" y="161" text-anchor="middle">compute: O(n d&sup2;)</text>
+            <text class="sub" x="540" y="183" text-anchor="middle">cheaper, less expressive</text>
+
+            <line class="arr" x1="340" y1="120" x2="380" y2="120"/>
+            <text class="sub" x="360" y="110" text-anchor="middle" fill="#76B900">drop softmax</text>
+        </svg>
+    </div>
+
+    <h3>What changes in practice</h3>
+    <ul>
+        <li>The <strong>state</strong> the model carries forward is no longer a growing list of (K, V) pairs &mdash; it is a fixed-size matrix of shape <code>(d_head &times; d_head)</code>.</li>
+        <li>The <strong>per-step cost</strong> at decode time is constant in <code>n</code>, instead of growing linearly with sequence length.</li>
+        <li>The <strong>expressivity</strong> drops: linear attention has well-known difficulty with exact lookups (&ldquo;copy this 12 tokens back&rdquo;) and with reasoning that depends on precise positional structure.</li>
+    </ul>
+
+    <div class="callout">
+        <div class="callout-label">The trade-off in one sentence</div>
+        <p>Standard attention scales like <code>n&sup2;</code> but learns whatever it needs. Linear attention scales like <code>n</code> but its fixed-size state is a memory bottleneck. The 2025 wave is essentially a search for the best way to make that fixed-size state <em>useful</em>.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-03">
+    <div class="slide-number">03</div>
+    <h2>Gated DeltaNet &mdash; Memory With Decay and Update</h2>
+    <p>Plain linear attention has no mechanism to <em>forget</em>. Every key/value pair is added to the state and never removed; new information overwrites old only by accident. Gated DeltaNet, the dominant design in Qwen3-Next and Kimi Linear, fixes this with two learned gates and a delta-rule update.</p>
+
+    <div class="canvas-wrap">
+        <svg viewBox="0 0 720 280" width="720" height="280" xmlns="http://www.w3.org/2000/svg">
+            <style>
+                .nd { fill: #0d1117; stroke: #21262d; }
+                .nd-a { fill: #0d1117; stroke: #76B900; }
+                .nd-w { fill: #0d1117; stroke: #ffa657; }
+                .ttl3 { fill: #76B900; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 700; }
+                .lbl3 { fill: #e6edf3; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+                .sub3 { fill: #8b949e; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+                .ar3 { stroke: #76B900; stroke-width: 1.7; fill: none; marker-end: url(#a3); }
+                .ar3w { stroke: #ffa657; stroke-width: 1.7; fill: none; marker-end: url(#a3w); }
+            </style>
+            <defs>
+                <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#76B900"/>
+                </marker>
+                <marker id="a3w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#ffa657"/>
+                </marker>
+            </defs>
+            <rect class="nd-a" x="280" y="50" width="180" height="70" rx="6"/>
+            <text class="ttl3" x="370" y="73" text-anchor="middle">hidden state S&#8336;</text>
+            <text class="sub3" x="370" y="92" text-anchor="middle">(d_head &times; d_head)</text>
+            <text class="sub3" x="370" y="106" text-anchor="middle">the only memory carried forward</text>
+
+            <rect class="nd-w" x="40" y="180" width="120" height="60" rx="6"/>
+            <text class="ttl3" x="100" y="200" text-anchor="middle" fill="#ffa657">&alpha;_t (decay)</text>
+            <text class="sub3" x="100" y="218" text-anchor="middle">sigmoid</text>
+            <text class="sub3" x="100" y="232" text-anchor="middle">scales S&#8336;&#8331;&#8321;</text>
+
+            <rect class="nd" x="200" y="180" width="160" height="60" rx="6"/>
+            <text class="ttl3" x="280" y="200" text-anchor="middle">delta rule</text>
+            <text class="sub3" x="280" y="218" text-anchor="middle">v&#8348; &minus; (S&#8336;&#8331;&#8321; k&#8348;)</text>
+            <text class="sub3" x="280" y="232" text-anchor="middle">predicted-vs-actual</text>
+
+            <rect class="nd-w" x="400" y="180" width="120" height="60" rx="6"/>
+            <text class="ttl3" x="460" y="200" text-anchor="middle" fill="#ffa657">&beta;_t (update)</text>
+            <text class="sub3" x="460" y="218" text-anchor="middle">sigmoid</text>
+            <text class="sub3" x="460" y="232" text-anchor="middle">scales the delta</text>
+
+            <rect class="nd" x="560" y="180" width="140" height="60" rx="6"/>
+            <text class="ttl3" x="630" y="200" text-anchor="middle">k&#8348; k&#8348;&#7488; outer</text>
+            <text class="sub3" x="630" y="218" text-anchor="middle">where to write</text>
+
+            <line class="ar3w" x1="100" y1="180" x2="270" y2="120"/>
+            <line class="ar3" x1="280" y1="180" x2="350" y2="125"/>
+            <line class="ar3w" x1="460" y1="180" x2="400" y2="125"/>
+            <line class="ar3" x1="630" y1="180" x2="450" y2="125"/>
+        </svg>
+    </div>
+
+    <h3>The update rule, in plain language</h3>
+    <ol>
+        <li><strong>Decay the old state.</strong> Multiply <code>S<sub>t&minus;1</sub></code> by the decay gate <code>&alpha;<sub>t</sub></code> &mdash; per-token, learned from the input. High &alpha; means &ldquo;keep remembering&rdquo;; low &alpha; means &ldquo;flush this forward&rdquo;.</li>
+        <li><strong>Predict, then correct.</strong> The current key <code>k<sub>t</sub></code> is run against the decayed state to produce a predicted value. Compare to the actual value <code>v<sub>t</sub></code>. The <em>delta</em> is the surprise.</li>
+        <li><strong>Write the surprise.</strong> Scale the delta by the update gate <code>&beta;<sub>t</sub></code> and write it into the state via <code>k<sub>t</sub> k<sub>t</sub><sup>T</sup></code> &mdash; an outer product that addresses where, in the state matrix, this information should live.</li>
+    </ol>
+
+    <p>The result: a fixed-size memory that <em>updates differentially</em> rather than just accumulating. New facts overwrite stale ones in the same address. This is the missing ingredient that makes pure linear attention almost competitive on real workloads &mdash; up from &ldquo;research curiosity&rdquo; to &ldquo;production candidate&rdquo;.</p>
+
+    <div class="callout">
+        <div class="callout-label">Connection to classic ideas</div>
+        <p>The delta rule is the same one used in Hebbian learning since the 1980s: <em>change weights in the direction of the prediction error.</em> Gated DeltaNet is essentially a transformer layer that does in-context Hebbian updates on a per-token basis &mdash; explicit recurrent state-space behaviour without giving up the parallelism of attention training.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-04">
+    <div class="slide-number">04</div>
+    <h2>The Hybrid Pattern &mdash; Why Pure Linear Doesn&rsquo;t Ship</h2>
+    <p>None of the four flagship 2025 models is purely linear. They <em>interleave</em> linear and standard layers in a fixed ratio, in the recognition that linear attention sacrifices exact-recall capabilities the standard mechanism handles natively. The interleaving ratio is the central design knob.</p>
+
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Model</th><th>Total / active params</th><th>Linear mechanism</th><th>Hybrid pattern</th><th>Headline number</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><strong>MiniMax-M1</strong></td>
+                    <td>456B / 46B (MoE)</td>
+                    <td>Lightning attention</td>
+                    <td>Mostly linear, periodic full-attention layers</td>
+                    <td>Frontier-tier reasoning at fraction of dense cost</td>
+                </tr>
+                <tr>
+                    <td><strong>Qwen3-Next</strong></td>
+                    <td>235B / ~22B (MoE)</td>
+                    <td>Gated DeltaNet + Gated Attention</td>
+                    <td>3 linear : 1 attention (3:1 ratio)</td>
+                    <td>262k native context vs 32k in Qwen3</td>
+                </tr>
+                <tr>
+                    <td><strong>DeepSeek V3.2</strong></td>
+                    <td>~671B / ~37B (MoE)</td>
+                    <td>Subquadratic <em>sparse</em> attention</td>
+                    <td>Routes most queries to a small set of keys</td>
+                    <td>Long-context bills cut without architecture change</td>
+                </tr>
+                <tr>
+                    <td><strong>Kimi Linear</strong></td>
+                    <td>48B</td>
+                    <td>Gated DeltaNet + MLA</td>
+                    <td>3 linear : 1 attention; MLA on the attention layers</td>
+                    <td>75% KV-cache reduction, up to 6&times; decoding throughput</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3>Why &ldquo;3 linear : 1 attention&rdquo; recurs</h3>
+    <p>Three linear layers compress sequence information into a running state cheaply; the fourth-layer standard attention then has the option to do exact recall against the full token stream when it needs to. Three-quarters of the layers run cheaply, while the model retains the lookup-precision of softmax attention where it actually matters. Both Qwen3-Next and Kimi Linear converged on this ratio independently; the design is becoming a folk-standard.</p>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>What the linear layers contribute</h4>
+            <p>Cheap context aggregation. Carrying the gist of a 200&nbsp;k-token document forward without accumulating per-token KV cost. Most layers in a deep transformer are doing summarisation; linear is fine for them.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>What the standard layers preserve</h4>
+            <p>Exact-recall and copy operations &mdash; &ldquo;quote line 47 verbatim&rdquo;, &ldquo;find the variable named <code>user_id</code> in the imports&rdquo;. Exactly the operations linear attention degrades on. One in four layers is enough to keep these working.</p>
+        </div>
+    </div>
+</section>
+
+<section class="slide" id="slide-05">
+    <div class="slide-number">05</div>
+    <h2>KV Cache &mdash; Where the Money Actually Is</h2>
+    <p>The headline savings from linear attention are not in compute &mdash; they are in <strong>KV-cache memory at inference time</strong>. Standard MHA caches grow linearly with sequence length, multiplied by depth and width. Linear-attention layers do not cache per-token at all: their state is a single fixed-size matrix.</p>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Multi-Head Attention (per layer)</h4>
+            <p>Cache size = <code>batch &times; n_tokens &times; n_heads &times; d_head &times; 2</code> bytes (the &times;2 covers K and V). Doubling the context doubles the cache. At 128&nbsp;k tokens this typically dwarfs the model weights themselves on a single GPU.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>DeltaNet (per layer)</h4>
+            <p>State size = <code>batch &times; n_heads &times; d_head &times; d_head</code> bytes. <strong>Independent of sequence length.</strong> A 200&nbsp;k-token context costs the same memory as a 200-token one. The crossover point is small &mdash; somewhere between 1&nbsp;k and 4&nbsp;k tokens.</p>
+        </div>
+    </div>
+
+    <h3>What this changes about deployment</h3>
+    <ul>
+        <li><strong>Long context becomes cheap.</strong> The economic incentive to chunk documents disappears for linear-heavy hybrids. RAG architectures don&rsquo;t go away, but the &ldquo;just put the whole thing in the prompt&rdquo; option gets substantially more attractive.</li>
+        <li><strong>Decode throughput rises.</strong> Kimi Linear claims up to 6&times; decoding throughput on long sequences vs a standard MHA baseline at the same parameter count &mdash; not because the model is smaller, but because each token of generation pays less memory bandwidth.</li>
+        <li><strong>Batch size goes up.</strong> Smaller per-request memory footprint means more concurrent requests on the same GPU. This is the operational win for the model serving the requests, not just for the user.</li>
+    </ul>
+
+    <div class="callout">
+        <div class="callout-label">A useful framing</div>
+        <p>If you&rsquo;ve internalised <em>&ldquo;long context is expensive&rdquo;</em> as a hard rule, half of that intuition is now wrong. The <em>compute</em> for the prefill pass is still expensive, but the <em>memory</em> for the decoding cache is suddenly an order of magnitude cheaper on a linear-heavy model. The two costs decouple in 2025 in a way they didn&rsquo;t in 2023.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-06">
+    <div class="slide-number">06</div>
+    <h2>Interactive: KV-Cache Memory Calculator</h2>
+    <p>Slide the inputs to see how the KV-cache footprint differs between a pure-MHA model and a 3:1 hybrid (Qwen3-Next / Kimi Linear style). Numbers are FP16 (2 bytes per scalar). The hybrid uses standard attention on 25% of layers and DeltaNet state on the rest.</p>
+
+    <div class="calc-card">
+        <div class="calc-row">
+            <div>
+                <label for="ctxSlider">Context length <span class="readout" id="ctxOut">32 768</span> tok</label>
+                <input id="ctxSlider" type="range" min="1024" max="262144" step="1024" value="32768">
+            </div>
+            <div>
+                <label for="layersSlider">Layers <span class="readout" id="layersOut">48</span></label>
+                <input id="layersSlider" type="range" min="12" max="80" step="1" value="48">
+            </div>
+        </div>
+        <div class="calc-row">
+            <div>
+                <label for="headsSlider">Attention heads <span class="readout" id="headsOut">32</span></label>
+                <input id="headsSlider" type="range" min="8" max="128" step="1" value="32">
+            </div>
+            <div>
+                <label for="dheadSlider">d_head <span class="readout" id="dheadOut">128</span></label>
+                <input id="dheadSlider" type="range" min="64" max="256" step="32" value="128">
+            </div>
+        </div>
+
+        <div class="cost-grid">
+            <div class="cost-cell">
+                <div class="lbl">Pure MHA cache</div>
+                <div class="val" id="mhaOut">&mdash;</div>
+            </div>
+            <div class="cost-cell">
+                <div class="lbl">3:1 hybrid cache</div>
+                <div class="val" id="hybOut">&mdash;</div>
+            </div>
+            <div class="cost-cell savings">
+                <div class="lbl">Reduction</div>
+                <div class="val" id="redOut">&mdash;</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">What the calculator tells you</div>
+        <p>At short context the two are similar: the fixed DeltaNet state is sized to be useful, not negligible. The interesting region is <strong>32&nbsp;k tokens and beyond</strong>, where the MHA cache scales linearly with context but the hybrid only scales on its 25% of standard layers. At 200&nbsp;k tokens the reduction is roughly the headline 75% Kimi Linear advertised &mdash; and the absolute saving is several gigabytes per active session, which is what unlocks longer context on the same GPU.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-07">
+    <div class="slide-number">07</div>
+    <h2>When Linear Hurts &mdash; The MiniMax-M2 Reversal</h2>
+    <p>The most informative single data point in the article is <em>not</em> a success story &mdash; it is a reversal. MiniMax-M1 shipped with linear attention (Lightning). MiniMax-M2, the successor, <strong>reverted to full attention</strong>, citing &ldquo;poor accuracy in reasoning and multi-turn tasks&rdquo; with the linear variants. This is one team being publicly honest about a trade-off the rest of the industry is still measuring.</p>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Where linear seems to underperform</h4>
+            <ul>
+                <li><strong>Multi-step reasoning</strong> &mdash; chains where the model has to revisit and exactly reuse intermediate facts.</li>
+                <li><strong>Long multi-turn dialogue</strong> &mdash; recalling specific user statements from earlier turns.</li>
+                <li><strong>Code editing</strong> with long-range references (&ldquo;the function defined 800 lines ago&rdquo;).</li>
+                <li><strong>Structured output</strong> with strict positional constraints.</li>
+            </ul>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Where the wins are real</h4>
+            <ul>
+                <li><strong>Single-pass long-context summarisation</strong> &mdash; gist over precision.</li>
+                <li><strong>Streaming generation at long context</strong> &mdash; the throughput win dominates.</li>
+                <li><strong>Cost-sensitive deployment</strong> at very long inputs &mdash; the 75% memory cut is real money.</li>
+                <li><strong>Tasks where pre-RAG retrieval has done the precision work already.</strong></li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="callout warn">
+        <div class="callout-label">Read this one carefully</div>
+        <p>The MiniMax-M2 reversal does <em>not</em> mean linear attention is wrong. It means <em>at MiniMax&rsquo;s 2025 capability target on their workload mix, the trade-off didn&rsquo;t pencil out</em>. Qwen3-Next, Kimi Linear and DeepSeek V3.2 made different bets and shipped. The reasonable inference is that the design space is genuinely contested &mdash; the answer depends on your workload, not on a universal verdict.</p>
+    </div>
+
+    <h3>Open questions worth tracking</h3>
+    <ol>
+        <li><strong>Does the 3:1 ratio scale up?</strong> Bigger models may need a different ratio &mdash; the published ones are largely below 100B active params. Test-time evidence at 500B+ is thin.</li>
+        <li><strong>Do reasoning models need more standard attention?</strong> Long chains of thought do exact recall constantly. Linear-heavy stacks may interact badly with the o1/R1 paradigm.</li>
+        <li><strong>How sensitive is the gating?</strong> If <code>&alpha;</code> and <code>&beta;</code> are mistuned at training time, the state under-decays and capacity collapses. Robust training recipes are still being established.</li>
+    </ol>
+</section>
+
+<section class="slide" id="slide-08">
+    <div class="slide-number">08</div>
+    <h2>Companion Decks &mdash; Where to Go Next</h2>
+    <p>This is the first of five companion decks to Raschka&rsquo;s <em>Beyond Standard LLMs</em>. The next three take the remaining architecture families in turn; the fifth is a decision-tree for choosing among them in your own work.</p>
+
+    <ol class="deck-list">
+        <li class="deck-card">
+            <div class="num">02</div>
+            <div class="body">
+                <a class="deck-title" href="https://brendanjameslynskey.github.io/Raschka_Beyond_LLMs_02_Text_Diffusion/">Text Diffusion Models &rarr;</a>
+                <div class="desc">LLaDA, Gemini Diffusion. Iterative denoising instead of next-token prediction. The streaming and conditional-dependency caveats. Interactive: parallel-vs-autoregressive token visualiser.</div>
+            </div>
+        </li>
+        <li class="deck-card">
+            <div class="num">03</div>
+            <div class="body">
+                <a class="deck-title" href="https://brendanjameslynskey.github.io/Raschka_Beyond_LLMs_03_Code_World_Models/">Code World Models &rarr;</a>
+                <div class="desc">CWM 32B. Mid-training that makes the model predict program state evolution, not just code text. SWE-bench parity with 4&times; smaller parameter counts. Interactive: world-model rollout stepper.</div>
+            </div>
+        </li>
+        <li class="deck-card">
+            <div class="num">04</div>
+            <div class="body">
+                <a class="deck-title" href="https://brendanjameslynskey.github.io/Raschka_Beyond_LLMs_04_Small_Recursive_Transformers/">Small Recursive Transformers &rarr;</a>
+                <div class="desc">HRM, TRM (7M params). Iterative self-loops for ARC-AGI. The surprising attention-not-required ablation. Interactive: recursive trace viewer.</div>
+            </div>
+        </li>
+        <li class="deck-card">
+            <div class="num">05</div>
+            <div class="body">
+                <a class="deck-title" href="https://brendanjameslynskey.github.io/Raschka_Beyond_LLMs_05_Decision_Tree/">When to Reach for Non-Transformer &rarr;</a>
+                <div class="desc">A practical decision-tree synthesising all four families. Interactive: walk your workload through the tree and see which architecture fits.</div>
+            </div>
+        </li>
+    </ol>
+</section>
+
+<section class="slide" id="slide-09">
+    <div class="slide-number">09</div>
+    <h2>Things to Try Yourself</h2>
+    <p>This material lands much harder if you do something with it. In rough order of effort:</p>
+
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>20 minutes &mdash; play with the calculator</h4>
+            <p>Plug in the dimensions of a model you actually deploy. At your context length, where does the crossover sit? Would a 3:1 hybrid pay off in your own serving stack at 50% utilisation?</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>1 hour &mdash; pull a Kimi Linear checkpoint</h4>
+            <p>Kimi Linear weights are open. Run a 100&nbsp;k-token summarisation and a 100&nbsp;k-token exact-quote task on it and on a same-size MHA baseline. The <em>gap</em> between the two is the practical cost of the linear trade-off.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>An afternoon &mdash; implement DeltaNet</h4>
+            <p>The update rule is short: thirty lines of PyTorch. Build it as a single layer and verify that the state is bounded by <code>d_head &times; d_head</code>, not by <code>n_tokens</code>. Train on a toy copy task and watch it fail in characteristic ways.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>A weekend &mdash; profile a real long-context inference</h4>
+            <p>Run vLLM or sglang against a 100&nbsp;k token prompt on Qwen3-Next vs Qwen3 and measure: peak GPU memory, time-to-first-token, decode tokens/s. Then read the gap against this deck&rsquo;s claims.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Ongoing &mdash; watch the M3 release</h4>
+            <p>MiniMax made a public reversal and is presumably preparing M3. Whether it goes back to linear, stays full-attention, or tries a different hybrid will be the most informative single data point of 2026 on this architecture family.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Read the source</h4>
+            <p>Raschka&rsquo;s article links every model release with primary sources. Start with <a href="https://github.com/sustcsonglin/flash-linear-attention" target="_blank" rel="noopener">flash-linear-attention</a> for an open-source DeltaNet implementation; then read the Qwen3-Next and Kimi Linear technical reports back-to-back &mdash; the design choices are remarkably similar.</p>
+        </div>
+    </div>
+
+    <div class="callout">
+        <div class="callout-label">A diagnostic prompt for your team</div>
+        <p>Next time someone asks &ldquo;should we cap context at 32&nbsp;k to save cost?&rdquo;, ask the harder question: <em>is our model architecture even paying the n&sup2; tax for context beyond that?</em> If you&rsquo;re running on a linear-heavy hybrid the answer is approximately <em>no</em>, and the cap is leaving capability on the table.</p>
+    </div>
+</section>
+
+<footer class="footer">
+    <p>Companion to <a href="https://magazine.sebastianraschka.com/p/beyond-standard-llms" target="_blank" rel="noopener">Sebastian Raschka, &ldquo;Beyond Standard LLMs&rdquo;</a></p>
+    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Modern_Architectures">Modern Architectures Series</a></p>
+    <p style="margin-top: 0.5rem; font-size: 0.8rem;"><a href="https://github.com/BrendanJamesLynskey/LLM_Hub_Modern_Architectures">Back to Series Index</a></p>
+</footer>
+
+<script>
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.slide').forEach(slide => {
+        slide.style.opacity = '0';
+        slide.style.transform = 'translateY(30px)';
+        slide.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+        observer.observe(slide);
+    });
+
+    // KV-cache calculator
+    function fmtBytes(n) {
+        if (n < 1024) return n.toFixed(0) + ' B';
+        if (n < 1024**2) return (n/1024).toFixed(1) + ' KB';
+        if (n < 1024**3) return (n/1024**2).toFixed(1) + ' MB';
+        return (n/1024**3).toFixed(2) + ' GB';
+    }
+    function recompute() {
+        const ctx    = +document.getElementById('ctxSlider').value;
+        const layers = +document.getElementById('layersSlider').value;
+        const heads  = +document.getElementById('headsSlider').value;
+        const dhead  = +document.getElementById('dheadSlider').value;
+        document.getElementById('ctxOut').textContent    = ctx.toLocaleString();
+        document.getElementById('layersOut').textContent = layers;
+        document.getElementById('headsOut').textContent  = heads;
+        document.getElementById('dheadOut').textContent  = dhead;
+
+        // FP16, batch=1
+        // MHA: per layer = ctx * heads * dhead * 2 (K+V) * 2 (FP16 bytes)
+        const mhaPerLayer = ctx * heads * dhead * 2 * 2;
+        const mhaTotal = mhaPerLayer * layers;
+
+        // DeltaNet: per layer state = heads * dhead * dhead * 2 (FP16 bytes), independent of ctx
+        const deltaPerLayer = heads * dhead * dhead * 2;
+
+        // 3:1 hybrid: 25% of layers are MHA, 75% are DeltaNet
+        const mhaLayers   = Math.round(layers * 0.25);
+        const deltaLayers = layers - mhaLayers;
+        const hybTotal    = mhaLayers * mhaPerLayer + deltaLayers * deltaPerLayer;
+
+        const reduction = (1 - hybTotal / mhaTotal) * 100;
+
+        document.getElementById('mhaOut').textContent = fmtBytes(mhaTotal);
+        document.getElementById('hybOut').textContent = fmtBytes(hybTotal);
+        document.getElementById('redOut').textContent = reduction.toFixed(1) + '%';
+    }
+    ['ctxSlider','layersSlider','headsSlider','dheadSlider'].forEach(id => {
+        document.getElementById(id).addEventListener('input', recompute);
+    });
+    recompute();
+</script>
+</body>
+</html>
